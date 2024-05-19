@@ -2,6 +2,15 @@
 name = "figment-directory"
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3-Clause"
+authors = ["Andreas Molitor <andreasewering@gmx.de>"]
+documentation = "https://docs.rs/figment-directory/0.1"
+description = "Figment provider for config values split into multiple files in a directory, working with any format."
+repository = "https://github.com/anmolitor/figment-directory"
+readme = "README.md"
+keywords = ["config", "configuration", "directory"]
+categories = ["config"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
