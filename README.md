@@ -4,7 +4,7 @@
 [crate]: https://crates.io/crates/figment-directory
 [docs.rs]: https://docs.rs/figment-directory/badge.svg
 [docs]: https://docs.rs/figment-directory
-[ci.svg]: https://github.com/anmolitor/figment-directory/workflows/CI/badge.svg
+[ci.svg]: https://github.com/anmolitor/figment-directory/workflows/test/badge.svg
 [ci]: https://github.com/anmolitor/figment-directory/actions
 
 [Figment](https://docs.rs/figment/latest/figment/) provider for config values split into multiple files in a directory, working with any [Format](https://docs.rs/figment/latest/figment/providers/trait.Format.html).
