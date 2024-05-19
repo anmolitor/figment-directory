@@ -1,11 +1,11 @@
 # Figment Directory &thinsp; [![ci.svg]][ci] [![crates.io]][crate] [![docs.rs]][docs]
 
-[crates.io]: https://img.shields.io/crates/v/figment_directory.svg
-[crate]: https://crates.io/crates/figment_directory
-[docs.rs]: https://docs.rs/figment_directory/badge.svg
-[docs]: https://docs.rs/figment_directory
-[ci.svg]: https://github.com/anmolitor/figment_directory/workflows/CI/badge.svg
-[ci]: https://github.com/anmolitor/figment_directory/actions
+[crates.io]: https://img.shields.io/crates/v/figment-directory.svg
+[crate]: https://crates.io/crates/figment-directory
+[docs.rs]: https://docs.rs/figment-directory/badge.svg
+[docs]: https://docs.rs/figment-directory
+[ci.svg]: https://github.com/anmolitor/figment-directory/workflows/CI/badge.svg
+[ci]: https://github.com/anmolitor/figment-directory/actions
 
 [Figment](https://docs.rs/figment/latest/figment/) provider for config values split into multiple files in a directory, working with any [Format](https://docs.rs/figment/latest/figment/providers/trait.Format.html).
 
@@ -74,4 +74,4 @@ figment-directory = { version = "0.1" }
 
 ## License
 
-figment_directory is licensed under the [BSD-3-Clause License](https://opensource.org/license/BSD-3-Clause)
+figment-directory is licensed under the [BSD-3-Clause License](https://opensource.org/license/BSD-3-Clause)
