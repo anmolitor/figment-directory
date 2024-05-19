@@ -1,5 +1,5 @@
 [package]
-name = "figment-directory-adapter"
+name = "figment-directory"
 version = "0.1.0"
 edition = "2021"
 

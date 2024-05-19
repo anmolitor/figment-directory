@@ -22,7 +22,7 @@ use figment::{
 /// ```rust
 /// // The `DirectoryExt` trait must be in-scope to use its methods.
 /// use figment::providers::{Format, Toml};
-/// use figment_directory_adapter::{Directory, FormatExt};
+/// use figment_directory::{Directory, FormatExt};
 ///
 /// // These two are equivalent, except the former requires the explicit type.
 /// let json_directory = Directory::<Toml>::new("foo");
@@ -120,7 +120,7 @@ impl<F> Directory<F> {
     /// ```rust
     /// use serde::Deserialize;
     /// use figment::{Figment, Jail, providers::{Format, Toml}, value::Map};
-    /// use figment_directory_adapter::{Directory, FormatExt as _};
+    /// use figment_directory::{Directory, FormatExt as _};
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct Config {
@@ -171,7 +171,7 @@ impl<F> Directory<F> {
     /// ```rust
     /// use serde::Deserialize;
     /// use figment::{Figment, Jail, providers::{Format, Toml}, value::Map, Profile};
-    /// use figment_directory_adapter::{Directory, FormatExt as _};
+    /// use figment_directory::{Directory, FormatExt as _};
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct Config { nested: NestedConfig }
@@ -206,7 +206,7 @@ impl<F> Directory<F> {
     /// ```rust
     /// use serde::Deserialize;
     /// use figment::{Figment, Jail, providers::{Format, Toml}, value::Map};
-    /// use figment_directory_adapter::{Directory, FormatExt as _};
+    /// use figment_directory::{Directory, FormatExt as _};
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct Config {
@@ -267,7 +267,7 @@ impl<F> Directory<F> {
     /// ```rust
     /// use serde::Deserialize;
     /// use figment::{Figment, Jail, providers::{Format, Toml}, value::Map};
-    /// use figment_directory_adapter::{Directory, FormatExt as _};
+    /// use figment_directory::{Directory, FormatExt as _};
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct Config {
@@ -328,7 +328,7 @@ impl<F> Directory<F> {
     /// ```rust
     /// use serde::Deserialize;
     /// use figment::{Figment, Jail, providers::{Format, Toml}, value::Map};
-    /// use figment_directory_adapter::{Directory, FormatExt as _};
+    /// use figment_directory::{Directory, FormatExt as _};
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct Config {
@@ -389,7 +389,7 @@ impl<F> Directory<F> {
     /// ```rust
     /// use serde::Deserialize;
     /// use figment::{Figment, Jail, providers::{Format, Toml}, value::Map};
-    /// use figment_directory_adapter::{Directory, FormatExt as _};
+    /// use figment_directory::{Directory, FormatExt as _};
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct Config {
