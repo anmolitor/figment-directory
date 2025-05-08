@@ -1,5 +1,4 @@
 use std::{
-    convert::Infallible,
     fs,
     marker::PhantomData,
     path::{Path, PathBuf},
@@ -26,7 +25,7 @@ use figment::{
 /// use figment_directory::{Directory, FormatExt as _};
 ///
 /// // These two are equivalent, except the former requires the explicit type.
-/// let json_directory = Directory::<Toml>::new("foo");
+/// let json_directory = Directory::<Toml>::new(figment_directory::RootPath::new("foo"));
 /// let json_directory = Toml::directory("foo");
 /// ```
 ///
@@ -94,6 +93,7 @@ pub struct Directory<F, FS = RootPath> {
 
 pub trait FormatExt: Format {
     fn directory<P: Into<PathBuf>>(path: P) -> Directory<Self, RootPath>;
+    #[cfg(feature = "include-dir")]
     fn included_directory<'a>(
         dir: &'a include_dir::Dir<'a>,
     ) -> Directory<Self, &'a include_dir::Dir<'a>>;
@@ -107,6 +107,7 @@ where
         Directory::new(RootPath(path.into()))
     }
 
+    #[cfg(feature = "include-dir")]
     fn included_directory<'a>(
         dir: &'a include_dir::Dir<'a>,
     ) -> Directory<Self, &'a include_dir::Dir<'a>> {
@@ -647,7 +648,14 @@ trait FilesystemFile {
     fn to_figment<F: Format>(self, profile: Profile) -> Figment;
 }
 
+#[derive(Debug, Clone)]
 pub struct RootPath(PathBuf);
+
+impl RootPath {
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+        Self(path.into())
+    }
+}
 
 impl Filesystem for RootPath {
     type DirEntry = fs::DirEntry;
@@ -704,10 +712,11 @@ impl DirectoryEntry for fs::DirEntry {
     }
 }
 
+#[cfg(feature = "include-dir")]
 impl<'a> Filesystem for &'a include_dir::Dir<'a> {
     type DirEntry = &'a include_dir::DirEntry<'a>;
     type ReadDir = InfallibleIter<core::slice::Iter<'a, include_dir::DirEntry<'a>>>;
-    type Error = Infallible;
+    type Error = std::convert::Infallible;
 
     fn read_dir(&self) -> Result<Self::ReadDir, Self::Error> {
         Ok(InfallibleIter(self.entries().iter()))
@@ -718,6 +727,7 @@ impl<'a> Filesystem for &'a include_dir::Dir<'a> {
     }
 }
 
+#[cfg(feature = "include-dir")]
 impl<'a> DirectoryEntry for &'a include_dir::DirEntry<'a> {
     type File = &'a include_dir::File<'a>;
     type Dir = &'a include_dir::Dir<'a>;
@@ -751,6 +761,7 @@ impl<'a> DirectoryEntry for &'a include_dir::DirEntry<'a> {
     }
 }
 
+#[cfg(feature = "include-dir")]
 impl<'a> FilesystemFile for &'a include_dir::File<'a> {
     fn to_figment<F: Format>(self, profile: Profile) -> Figment {
         let Some(contents) = self.contents_utf8() else {
@@ -761,13 +772,15 @@ impl<'a> FilesystemFile for &'a include_dir::File<'a> {
     }
 }
 
+#[cfg(feature = "include-dir")]
 struct InfallibleIter<I>(I);
 
+#[cfg(feature = "include-dir")]
 impl<T, I> Iterator for InfallibleIter<I>
 where
     I: Iterator<Item = T>,
 {
-    type Item = Result<T, Infallible>;
+    type Item = Result<T, std::convert::Infallible>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(Ok)
@@ -825,6 +838,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "include-dir")]
     fn handles_nested_directory_include_dir() {
         let basic_entries = [include_dir::DirEntry::File(include_dir::File::new(
             "nested.toml",
