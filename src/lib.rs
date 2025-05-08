@@ -110,7 +110,7 @@ impl<F> Directory<F> {
             path: path.into(),
             conflict_resolution_strategy: ConflictResolutionStrategy::Join,
             profile: Some(Profile::Default),
-            format: PhantomData::default(),
+            format: PhantomData,
         }
     }
 
@@ -495,7 +495,7 @@ fn collect_nested_dir<F>(
 where
     F: Format,
 {
-    let Ok(dir_entries) = fs::read_dir(&path) else {
+    let Ok(dir_entries) = fs::read_dir(path) else {
         return Ok(Map::new());
     };
     let mut map = Map::new();
@@ -531,7 +531,7 @@ where
     F: Format,
 {
     let mut figment = Figment::new();
-    let Ok(dir_entries) = fs::read_dir(&path) else {
+    let Ok(dir_entries) = fs::read_dir(path) else {
         return figment;
     };
     for entry in dir_entries {
@@ -645,13 +645,12 @@ mod tests {
                 "#,
             )?;
 
-            let config: NestedBasicConfig = Figment::new()
-                .merge(Toml::directory("root"))
-                .extract()?;
+            let config: NestedBasicConfig =
+                Figment::new().merge(Toml::directory("root")).extract()?;
 
             assert_eq!(config.basic.int, 5);
             assert_eq!(&config.basic.str, "string");
-            assert_eq!(config.basic.nested.bool, true);
+            assert!(config.basic.nested.bool);
             assert_eq!(config.basic.nested.array, vec![1.5]);
             assert_eq!(config.basic.nested.default, 2);
             Ok(())
