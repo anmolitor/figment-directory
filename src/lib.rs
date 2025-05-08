@@ -1,5 +1,6 @@
 use std::{
-    fs::{self, DirEntry},
+    convert::Infallible,
+    fs,
     marker::PhantomData,
     path::{Path, PathBuf},
 };
@@ -84,36 +85,46 @@ use figment::{
 ///     This strategy corresponds to the "Join" strategy in the [figment docs on conflict resolution](https://docs.rs/figment/0.10.19/figment/struct.Figment.html#conflict-resolution).
 ///     The behaviour can be changed by using the methods on [`Directory`] corresponding to the
 ///     available strategies: [`Directory::merge`], [`Directory::adjoin`], [`Directory::admerge`] and [`Directory::join`] (if you like to be explicit).
-pub struct Directory<F> {
-    path: PathBuf,
+pub struct Directory<F, FS = RootPath> {
+    file_system: FS,
     conflict_resolution_strategy: ConflictResolutionStrategy,
     profile: Option<Profile>,
     format: PhantomData<F>,
 }
 
 pub trait FormatExt: Format {
-    fn directory<P: Into<PathBuf>>(path: P) -> Directory<Self>;
+    fn directory<P: Into<PathBuf>>(path: P) -> Directory<Self, RootPath>;
+    fn included_directory<'a>(
+        dir: &'a include_dir::Dir<'a>,
+    ) -> Directory<Self, &'a include_dir::Dir<'a>>;
 }
 
 impl<F> FormatExt for F
 where
     F: Format,
 {
-    fn directory<P: Into<PathBuf>>(path: P) -> Directory<Self> {
-        Directory::new(path)
+    fn directory<P: Into<PathBuf>>(path: P) -> Directory<Self, RootPath> {
+        Directory::new(RootPath(path.into()))
+    }
+
+    fn included_directory<'a>(
+        dir: &'a include_dir::Dir<'a>,
+    ) -> Directory<Self, &'a include_dir::Dir<'a>> {
+        Directory::new(dir)
     }
 }
 
-impl<F> Directory<F> {
-    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+impl<F> Directory<F, RootPath> {}
+
+impl<F, FS> Directory<F, FS> {
+    pub fn new(file_system: FS) -> Self {
         Self {
-            path: path.into(),
+            file_system,
             conflict_resolution_strategy: ConflictResolutionStrategy::Join,
             profile: Some(Profile::Default),
             format: PhantomData,
         }
     }
-
     /// Enables nesting on `self`, which results in top-level keys of the
     /// sourced data being treated as profiles.
     ///
@@ -464,38 +475,42 @@ impl ConflictResolutionStrategy {
     }
 }
 
-impl<F> Provider for Directory<F>
+impl<F, FS> Provider for Directory<F, FS>
 where
     F: Format,
+    FS: Filesystem,
 {
     fn metadata(&self) -> Metadata {
         Metadata::from(
             format!("{} Directory", F::NAME),
-            Source::File(self.path.clone()),
+            Source::File(self.file_system.path().to_owned()),
         )
     }
 
     fn data(&self) -> Result<Map<Profile, Dict>, Error> {
         match &self.profile {
-            Some(profile) => collect_dir::<F>(
-                &self.path,
+            Some(profile) => collect_dir::<F, FS>(
+                &self.file_system,
                 self.conflict_resolution_strategy,
                 profile.clone(),
             )
             .data(),
-            None => collect_nested_dir::<F>(&self.path, self.conflict_resolution_strategy),
+            None => {
+                collect_nested_dir::<F, FS>(&self.file_system, self.conflict_resolution_strategy)
+            }
         }
     }
 }
 
-fn collect_nested_dir<F>(
-    path: &Path,
+fn collect_nested_dir<F, FS>(
+    file_system: &FS,
     strategy: ConflictResolutionStrategy,
 ) -> figment::Result<Map<Profile, Dict>>
 where
     F: Format,
+    FS: Filesystem,
 {
-    let Ok(dir_entries) = fs::read_dir(path) else {
+    let Ok(dir_entries) = file_system.read_dir() else {
         return Ok(Map::new());
     };
     let mut map = Map::new();
@@ -504,7 +519,7 @@ where
             continue;
         };
         let entry_path = entry.path();
-        let Some(provider) = collect::<F>(entry, strategy, Profile::Default) else {
+        let Some(provider) = collect::<F, FS>(entry, strategy, Profile::Default) else {
             continue;
         };
         let Some(file_stem) = entry_path.file_stem().and_then(|stem| stem.to_str()) else {
@@ -526,18 +541,23 @@ where
     Ok(map)
 }
 
-fn collect_dir<F>(path: &Path, strategy: ConflictResolutionStrategy, profile: Profile) -> Figment
+fn collect_dir<F, FS>(
+    file_system: &FS,
+    strategy: ConflictResolutionStrategy,
+    profile: Profile,
+) -> Figment
 where
     F: Format,
+    FS: Filesystem,
 {
     let mut figment = Figment::new();
-    let Ok(dir_entries) = fs::read_dir(path) else {
+    let Ok(dir_entries) = file_system.read_dir() else {
         return figment;
     };
     for entry in dir_entries {
         if let Some(provider) = entry
             .ok()
-            .and_then(|entry| collect::<F>(entry, strategy, profile.clone()))
+            .and_then(|entry| collect::<F, FS>(entry, strategy, profile.clone()))
         {
             figment = strategy.resolve(figment, provider);
         }
@@ -545,39 +565,32 @@ where
     figment
 }
 
-fn collect<F>(
-    entry: DirEntry,
+fn collect<F, FS>(
+    entry: FS::DirEntry,
     strategy: ConflictResolutionStrategy,
     profile: Profile,
 ) -> Option<impl Provider>
 where
     F: Format,
+    FS: Filesystem,
 {
-    let file_name = entry.file_name();
-    let entry_path = entry.path();
-    if entry_path.is_dir() {
-        let Some(dirname) = file_name.to_str() else {
-            // Ignore files and directories that are not valid UTF-8
-            return None;
-        };
-        let nested_figment = collect_dir::<F>(&entry_path, strategy, profile);
-        return Some(NestedProvider {
-            inner: nested_figment,
-            key: dirname.to_string(),
-        });
+    match entry.into_fs_entry() {
+        FilesystemEntry::Invalid => None,
+        FilesystemEntry::File { stem, file } => {
+            let nested_provider = NestedProvider {
+                inner: file.to_figment::<F>(profile),
+                key: stem,
+            };
+            Some(nested_provider)
+        }
+        FilesystemEntry::Dir { dir: fs, name } => {
+            let nested_figment = collect_dir::<F, _>(&fs, strategy, profile);
+            Some(NestedProvider {
+                inner: nested_figment,
+                key: name.to_string(),
+            })
+        }
     }
-
-    let Some(file_stem) = entry_path.file_stem().and_then(|stem| stem.to_str()) else {
-        // Ignore files that are not valid UTF-8
-        return None;
-    };
-    let file = F::file_exact(&entry_path).profile(profile);
-
-    let nested_provider = NestedProvider {
-        inner: Figment::from(file),
-        key: file_stem.to_string(),
-    };
-    Some(nested_provider)
 }
 
 struct NestedProvider<P> {
@@ -604,6 +617,160 @@ where
             })
             .collect();
         Ok(data)
+    }
+}
+
+trait Filesystem {
+    type DirEntry: DirectoryEntry;
+    type ReadDir: Iterator<Item = Result<Self::DirEntry, Self::Error>>;
+    type Error: std::error::Error;
+
+    fn read_dir(&self) -> Result<Self::ReadDir, Self::Error>;
+    fn path(&self) -> &Path;
+}
+
+enum FilesystemEntry<F, D> {
+    File { stem: String, file: F },
+    Dir { name: String, dir: D },
+    Invalid,
+}
+
+trait DirectoryEntry {
+    type File: FilesystemFile;
+    type Dir: Filesystem;
+    fn path(&self) -> PathBuf;
+    fn file_name(&self) -> Option<String>;
+    fn into_fs_entry(self) -> FilesystemEntry<Self::File, Self::Dir>;
+}
+
+trait FilesystemFile {
+    fn to_figment<F: Format>(self, profile: Profile) -> Figment;
+}
+
+pub struct RootPath(PathBuf);
+
+impl Filesystem for RootPath {
+    type DirEntry = fs::DirEntry;
+    type ReadDir = fs::ReadDir;
+    type Error = std::io::Error;
+
+    fn read_dir(&self) -> Result<Self::ReadDir, Self::Error> {
+        fs::read_dir(&self.0)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+struct PathFile(PathBuf);
+
+impl FilesystemFile for PathFile {
+    fn to_figment<F: Format>(self, profile: Profile) -> Figment {
+        Figment::from(F::file_exact(&self.0).profile(profile))
+    }
+}
+
+impl DirectoryEntry for fs::DirEntry {
+    type Dir = RootPath;
+    type File = PathFile;
+    fn path(&self) -> PathBuf {
+        fs::DirEntry::path(self)
+    }
+
+    fn file_name(&self) -> Option<String> {
+        fs::DirEntry::file_name(self).into_string().ok()
+    }
+
+    fn into_fs_entry(self) -> FilesystemEntry<Self::File, Self::Dir> {
+        let Some(name) = DirectoryEntry::file_name(&self) else {
+            return FilesystemEntry::Invalid;
+        };
+        let path = self.path();
+        if path.is_dir() {
+            FilesystemEntry::Dir {
+                dir: RootPath(path),
+                name,
+            }
+        } else {
+            let Some((stem, _ext)) = name.rsplit_once('.') else {
+                return FilesystemEntry::Invalid;
+            };
+            FilesystemEntry::File {
+                file: PathFile(path),
+                stem: stem.to_owned(),
+            }
+        }
+    }
+}
+
+impl<'a> Filesystem for &'a include_dir::Dir<'a> {
+    type DirEntry = &'a include_dir::DirEntry<'a>;
+    type ReadDir = InfallibleIter<core::slice::Iter<'a, include_dir::DirEntry<'a>>>;
+    type Error = Infallible;
+
+    fn read_dir(&self) -> Result<Self::ReadDir, Self::Error> {
+        Ok(InfallibleIter(self.entries().iter()))
+    }
+
+    fn path(&self) -> &Path {
+        include_dir::Dir::path(self)
+    }
+}
+
+impl<'a> DirectoryEntry for &'a include_dir::DirEntry<'a> {
+    type File = &'a include_dir::File<'a>;
+    type Dir = &'a include_dir::Dir<'a>;
+
+    fn path(&self) -> PathBuf {
+        include_dir::DirEntry::path(self).to_owned()
+    }
+
+    fn file_name(&self) -> Option<String> {
+        let os_str = include_dir::DirEntry::path(self).file_name()?;
+        let str = os_str.to_str()?;
+        Some(str.to_owned())
+    }
+
+    fn into_fs_entry(self) -> FilesystemEntry<Self::File, Self::Dir> {
+        let Some(name) = DirectoryEntry::file_name(&self) else {
+            return FilesystemEntry::Invalid;
+        };
+        match self {
+            include_dir::DirEntry::Dir(fs) => FilesystemEntry::Dir { dir: fs, name },
+            include_dir::DirEntry::File(file) => {
+                let Some((stem, _ext)) = name.rsplit_once('.') else {
+                    return FilesystemEntry::Invalid;
+                };
+                FilesystemEntry::File {
+                    file,
+                    stem: stem.to_owned(),
+                }
+            }
+        }
+    }
+}
+
+impl<'a> FilesystemFile for &'a include_dir::File<'a> {
+    fn to_figment<F: Format>(self, profile: Profile) -> Figment {
+        let Some(contents) = self.contents_utf8() else {
+            return Figment::new();
+        };
+        let data = figment::providers::Data::<F>::string(contents).profile(profile);
+        Figment::from(data)
+    }
+}
+
+struct InfallibleIter<I>(I);
+
+impl<T, I> Iterator for InfallibleIter<I>
+where
+    I: Iterator<Item = T>,
+{
+    type Item = Result<T, Infallible>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(Ok)
     }
 }
 
@@ -655,6 +822,42 @@ mod tests {
             assert_eq!(config.basic.nested.default, 2);
             Ok(())
         })
+    }
+
+    #[test]
+    fn handles_nested_directory_include_dir() {
+        let basic_entries = [include_dir::DirEntry::File(include_dir::File::new(
+            "nested.toml",
+            r#"
+bool = true
+array = [1.5]
+default = 2
+                "#
+            .as_bytes(),
+        ))];
+        let root_entries = [
+            include_dir::DirEntry::File(include_dir::File::new(
+                "basic.toml",
+                r#"
+int = 5
+str = "string"
+            "#
+                .as_bytes(),
+            )),
+            include_dir::DirEntry::Dir(include_dir::Dir::new("basic", &basic_entries)),
+        ];
+        let dir = include_dir::Dir::new("root", &root_entries);
+
+        let config: NestedBasicConfig = Figment::new()
+            .merge(Toml::included_directory(&dir))
+            .extract()
+            .unwrap();
+
+        assert_eq!(config.basic.int, 5);
+        assert_eq!(&config.basic.str, "string");
+        assert!(config.basic.nested.bool);
+        assert_eq!(config.basic.nested.array, vec![1.5]);
+        assert_eq!(config.basic.nested.default, 2);
     }
 
     #[derive(Debug, Deserialize)]

@@ -16,6 +16,7 @@ categories = ["config"]
 
 [dependencies]
 figment = "0.10.19"
+include_dir = "0.7.4"
 
 [dev-dependencies]
 figment = { version = "0.10.19", features = ["toml", "test"] }
